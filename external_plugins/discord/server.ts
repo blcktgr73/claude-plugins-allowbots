@@ -105,6 +105,10 @@ type GroupPolicy = {
 type Access = {
   dmPolicy: 'pairing' | 'allowlist' | 'disabled'
   allowFrom: string[]
+  /** Opt-in: when true, messages from bots whose ID is in allowFrom are
+   *  delivered (instead of being dropped by the default bot-author filter).
+   *  Self-message is always dropped regardless. See upstream issue #1598. */
+  allowBots?: boolean
   /** Keyed on channel ID (snowflake), not guild ID. One entry per guild channel. */
   groups: Record<string, GroupPolicy>
   pending: Record<string, PendingEntry>
@@ -155,6 +159,7 @@ function readAccessFile(): Access {
     return {
       dmPolicy: parsed.dmPolicy ?? 'pairing',
       allowFrom: parsed.allowFrom ?? [],
+      allowBots: parsed.allowBots ?? false,
       groups: parsed.groups ?? {},
       pending: parsed.pending ?? {},
       mentionPatterns: parsed.mentionPatterns,
@@ -803,7 +808,18 @@ client.on('interactionCreate', async (interaction: Interaction) => {
 })
 
 client.on('messageCreate', msg => {
-  if (msg.author.bot) return
+  // Always drop self-message (loop prevention — never react to our own posts).
+  if (msg.author.id === client.user?.id) return
+  // For other bots: drop unless `allowBots` is explicitly true AND the bot's
+  // user ID is on the top-level allowFrom. Both gates are required so that
+  // existing single-user setups are unaffected (default `allowBots: false`).
+  // See upstream issue #1598 for the original blanket bot drop and the
+  // multi-agent (Neo ↔ Morpheus) use case driving this opt-in.
+  if (msg.author.bot) {
+    const access = loadAccess()
+    const isBotAllowed = access.allowBots === true && access.allowFrom.includes(msg.author.id)
+    if (!isBotAllowed) return
+  }
   handleInbound(msg).catch(e => process.stderr.write(`discord: handleInbound failed: ${e}\n`))
 })
 
