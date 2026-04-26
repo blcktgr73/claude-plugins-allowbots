@@ -888,6 +888,11 @@ async function handleInbound(msg: Message): Promise<void> {
   // forgeable by any allowlisted sender typing that string.
   const content = msg.content || (atts.length > 0 ? '(attachment)' : '')
 
+  // Diagnostic logging — write *before* and *after* the notification so we
+  // can see in stderr exactly what was attempted and whether it failed.
+  // Helps debug the "messages arrive at the plugin but never reach Claude"
+  // class of bug (push notification subscription drift).
+  process.stderr.write(`discord channel: notify start chat_id=${chat_id} msg_id=${msg.id} from=${msg.author.username}/${msg.author.id} bot=${msg.author.bot}\n`)
   mcp.notification({
     method: 'notifications/claude/channel',
     params: {
@@ -901,13 +906,32 @@ async function handleInbound(msg: Message): Promise<void> {
         ...(atts.length > 0 ? { attachment_count: String(atts.length), attachments: atts.join('; ') } : {}),
       },
     },
+  }).then(() => {
+    process.stderr.write(`discord channel: notify ok msg_id=${msg.id}\n`)
   }).catch(err => {
-    process.stderr.write(`discord channel: failed to deliver inbound to Claude: ${err}\n`)
+    process.stderr.write(`discord channel: failed to deliver inbound to Claude: msg_id=${msg.id} err=${err?.message ?? err}\n`)
   })
 }
 
 client.once('ready', c => {
   process.stderr.write(`discord channel: gateway connected as ${c.user.tag}\n`)
+})
+
+// Lifecycle visibility — discord.js auto-reconnects but doesn't always re-fire
+// 'ready'. Without these, a long-lived plugin can silently lose its event
+// stream. Logging here lets the operator correlate "messages stopped flowing"
+// with a gateway disconnect/resume in stderr.
+client.on('shardDisconnect', (event, shardId) => {
+  process.stderr.write(`discord channel: shard ${shardId} disconnected (code=${event?.code ?? 'unknown'})\n`)
+})
+client.on('shardResume', (shardId, replayed) => {
+  process.stderr.write(`discord channel: shard ${shardId} resumed (replayed ${replayed} events)\n`)
+})
+client.on('shardReady', shardId => {
+  process.stderr.write(`discord channel: shard ${shardId} ready\n`)
+})
+client.on('shardError', (err, shardId) => {
+  process.stderr.write(`discord channel: shard ${shardId} error: ${err?.message ?? err}\n`)
 })
 
 client.login(TOKEN).catch(err => {
