@@ -1,10 +1,10 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "claude-plugins-official",
-  "description": "Directory of popular Claude Code extensions including development tools, productivity plugins, and MCP integrations",
+  "name": "claude-plugins-allowbots",
+  "description": "Fork of claude-plugins-official with the discord plugin patched to deliver inbound messages from allowlisted bots (allowBots opt-in). See upstream issue anthropics/claude-plugins-official#1598.",
   "owner": {
-    "name": "Anthropic",
-    "email": "support@anthropic.com"
+    "name": "blcktgr73",
+    "email": "blcktgr73@gmail.com"
   },
   "plugins": [
     {
